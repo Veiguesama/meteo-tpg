@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Météo émotionnelle TPG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --tpg-red:#ff5a00;
+  --tpg-red-dark:#b63a00;
+  --tpg-orange:#ff5a00;
+  --tpg-yellow:#ffb000;
+  --tpg-black:#141414;
+  --tpg-grey:#f4f4f4;
+  --white:#ffffff;
+  --glass:rgba(255,255,255,.78);
+  --shadow:0 24px 70px rgba(0,0,0,.18);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  font-family:Inter,Arial,sans-serif;
+  color:var(--tpg-black);
+  text-align:center;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255,90,0,.20), transparent 28%),
+    radial-gradient(circle at 88% 18%, rgba(255,176,0,.16), transparent 30%),
+    linear-gradient(145deg,#ffffff 0%,#f6f6f6 48%,#ececec 100%);
+  overflow-x:hidden;
+}
+body:before{
+  content:"";
+  position:fixed;
+  inset:0;
+  background:
+    linear-gradient(115deg, transparent 0 54%, rgba(255,90,0,.07) 54% 62%, transparent 62%),
+    linear-gradient(115deg, transparent 0 70%, rgba(20,20,20,.04) 70% 74%, transparent 74%);
+  pointer-events:none;
+}
+.hero{
+  position:relative;
+  padding:34px 22px 58px;
+  color:white;
+  background:
+    linear-gradient(135deg, #ff8a00 0%, var(--tpg-red) 45%, #ff3d00 100%);
+  overflow:hidden;
+}
+.hero:before{
+  content:"";
+  position:absolute;
+  width:520px;height:520px;
+  border-radius:50%;
+  background:rgba(255,255,255,.12);
+  top:-330px;right:-190px;
+}
+.hero:after{
+  content:"";
+  position:absolute;
+  width:380px;height:380px;
+  border-radius:50%;
+  border:42px solid rgba(255,255,255,.08);
+  bottom:-260px;left:-130px;
+}
+.logo-row{
+  position:relative;
+  z-index:2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  margin-bottom:22px;
+}
+.logo-mark{
+  font-weight:900;
+  font-size:34px;
+  letter-spacing:-2px;
+  background:white;
+  color:var(--tpg-red);
+  padding:8px 15px;
+  border-radius:16px;
+  box-shadow:0 12px 35px rgba(0,0,0,.22);
+}
+.hero h1{
+  position:relative;
+  z-index:2;
+  margin:0;
+  font-size:clamp(34px,7vw,58px);
+  letter-spacing:-2px;
+  line-height:1;
+  font-weight:900;
+}
+.hero p{
+  position:relative;
+  z-index:2;
+  margin:16px auto 0;
+  max-width:720px;
+  font-size:18px;
+  line-height:1.45;
+  opacity:.94;
+}
+.container{
+  position:relative;
+  z-index:3;
+  max-width:980px;
+  margin:-36px auto 42px;
+  padding:0 18px 34px;
+}
+.card,.admin{
+  background:var(--glass);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  border:1px solid rgba(255,255,255,.75);
+  border-radius:34px;
+  box-shadow:var(--shadow);
+}
+.card{
+  padding:34px 24px 28px;
+}
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:9px 14px;
+  border-radius:999px;
+  background:rgba(255,90,0,.11);
+  color:var(--tpg-red-dark);
+  font-weight:800;
+  font-size:13px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.card h2{
+  margin:22px 0 8px;
+  font-size:clamp(28px,5vw,44px);
+  letter-spacing:-1.4px;
+  font-weight:900;
+}
+.subtitle{
+  max-width:650px;
+  margin:0 auto;
+  color:#555;
+  line-height:1.5;
+  font-size:17px;
+}
+.icons{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(92px,1fr));
+  gap:14px;
+  margin:34px auto 26px;
+}
+.mood{
+  min-height:145px;
+  border:0;
+  border-radius:28px;
+  cursor:pointer;
+  background:linear-gradient(180deg,#fff,#f3f3f3);
+  box-shadow:0 14px 28px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.9);
+  transition:.22s ease;
+  padding:14px 8px;
+  position:relative;
+  overflow:hidden;
+}
+.mood:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  opacity:0;
+  background:linear-gradient(135deg, rgba(255,90,0,.18), rgba(255,255,255,.2));
+  transition:.22s ease;
+}
+.mood:hover,.mood:active{
+  transform:translateY(-6px) scale(1.025);
+  box-shadow:0 22px 42px rgba(255,90,0,.24);
+}
+.mood:hover:before,.mood:active:before{opacity:1}
+.emoji{display:block;font-size:40px;position:relative;z-index:2}
+.note{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:36px;height:36px;
+  margin:10px auto 8px;
+  border-radius:50%;
+  background:var(--tpg-red);
+  color:white;
+  font-weight:900;
+  position:relative;z-index:2;
+}
+.label{
+  display:block;
+  font-size:13px;
+  font-weight:800;
+  color:#2d2d2d;
+  line-height:1.2;
+  position:relative;z-index:2;
+}
+.small{
+  margin-top:10px;
+  font-size:13px;
+  color:#777;
+}
+.success{
+  color:#187a39;
+  font-size:30px;
+  font-weight:900;
+  letter-spacing:-.8px;
+}
+.help{
+  margin:24px auto 0;
+  max-width:720px;
+  background:linear-gradient(135deg,#fff7d8,#fff1b8);
+  padding:22px;
+  border-left:7px solid #ffb000;
+  border-radius:20px;
+  color:#634800;
+  line-height:1.55;
+  text-align:left;
+  box-shadow:0 16px 35px rgba(160,110,0,.13);
+}
+.admin{
+  display:none;
+  margin-top:24px;
+  padding:26px;
+  text-align:left;
+}
+.admin-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.admin h2{margin:0;font-size:28px;letter-spacing:-.8px}
+.admin-actions{display:flex;gap:8px;flex-wrap:wrap}
+.admin button{
+  background:var(--tpg-red);
+  color:white;
+  border:0;
+  border-radius:14px;
+  padding:13px 16px;
+  cursor:pointer;
+  font-weight:800;
+  box-shadow:0 12px 24px rgba(255,90,0,.28);
+}
+.admin button.secondary{background:#222}
+.admin button.ghost{background:#777}
+.kpis{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+  margin:22px 0;
+}
+.kpi{
+  background:white;
+  border-radius:20px;
+  padding:18px;
+  box-shadow:0 8px 25px rgba(0,0,0,.08);
+}
+.kpi span{display:block;color:#777;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.kpi strong{display:block;margin-top:6px;font-size:30px;color:var(--tpg-red);font-weight:900}
+.result-line{margin:17px 0}
+.result-top{display:flex;justify-content:space-between;font-weight:800;margin-bottom:7px}
+.bar-bg{background:#ececec;border-radius:999px;overflow:hidden;height:24px;box-shadow:inset 0 2px 5px rgba(0,0,0,.08)}
+.bar{background:linear-gradient(90deg,#ffb000,var(--tpg-red),#ff3d00);height:100%;width:0%;border-radius:999px}
+.closed{color:var(--tpg-red);font-weight:900}
+footer{margin-top:24px;color:#777;font-size:13px}
+@media(max-width:760px){
+  .icons{grid-template-columns:repeat(3,1fr)}
+  .mood{min-height:130px;border-radius:24px}
+  .kpis{grid-template-columns:1fr}
+}
+@media(max-width:430px){
+  .icons{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+
+<body>
+<section class="hero">
+  <div class="logo-row">
+    <div class="logo-mark">tpg</div>
+  </div>
+  <h1>Météo émotionnelle</h1>
+  <p>Un rituel simple, anonyme et bienveillant pour prendre la température de l’équipe et renforcer notre culture du soutien mutuel.</p>
+</section>
+
+<div class="container">
+  <div class="card" id="voteBox">
+    <div class="badge">Projet collectif · Leadership émotionnel</div>
+    <h2>Comment te sens-tu aujourd’hui ?</h2>
+    <p class="subtitle">Choisis la météo qui correspond le mieux à ton état du moment. Une seule réponse par appareil.</p>
+
+    <div class="icons">
+      <button class="mood" onclick="vote(1)"><span class="emoji">⛈️</span><span class="note">1</span><span class="label">Très difficile</span></button>
+      <button class="mood" onclick="vote(2)"><span class="emoji">🌧️</span><span class="note">2</span><span class="label">Difficile</span></button>
+      <button class="mood" onclick="vote(3)"><span class="emoji">☁️</span><span class="note">3</span><span class="label">Mitigé</span></button>
+      <button class="mood" onclick="vote(4)"><span class="emoji">🌤️</span><span class="note">4</span><span class="label">Correct</span></button>
+      <button class="mood" onclick="vote(5)"><span class="emoji">☀️</span><span class="note">5</span><span class="label">Bien</span></button>
+      <button class="mood" onclick="vote(6)"><span class="emoji">🌈</span><span class="note">6</span><span class="label">Excellent</span></button>
+    </div>
+
+    <p class="small">Les résultats ne sont visibles que sur l’interface admin.</p>
+    <div id="message"></div>
+  </div>
+
+  <div class="admin" id="adminPanel">
+    <div class="admin-head">
+      <h2>Interface admin</h2>
+      <div class="admin-actions">
+        <button onclick="openVotes()">Ouvrir les votes</button>
+        <button class="secondary" onclick="closeVotes()">Fermer les votes</button>
+        <button class="ghost" onclick="resetVotes()">Réinitialiser</button>
+      </div>
+    </div>
+    <p id="status"></p>
+    <div id="kpis" class="kpis"></div>
+    <div id="results"></div>
+  </div>
+
+  <footer>tpg · Météo émotionnelle · Prototype Firebase</footer>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import { getDatabase, ref, get, set, update, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAv8feBFqJhSc1tJUlgBKgAwi3ODc1Fv-g",
+  authDomain: "tpg-emotions.firebaseapp.com",
+  databaseURL: "https://tpg-emotions-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "tpg-emotions",
+  storageBucket: "tpg-emotions.firebasestorage.app",
+  messagingSenderId: "762096447352",
+  appId: "1:762096447352:web:438cac3fa2f8321f27e28d",
+  measurementId: "G-5XN4L1CY68"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const votePath = ref(db, "meteoEmotionnelleTPG");
+const isAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+
+async function init(){
+  const snap = await get(votePath);
+  const initialVotes = {1:0,2:0,3:0,4:0,5:0,6:0};
+  if(!snap.exists()){
+    await set(votePath,{open:false,votes:initialVotes});
+  } else {
+    const data = snap.val() || {};
+    const votes = {...initialVotes, ...(data.votes || {})};
+    await update(votePath,{votes});
+  }
+  if(isAdmin){
+    document.getElementById("adminPanel").style.display="block";
+    listenAdmin();
+  }
+}
+
+window.vote = async function(value){
+  if(localStorage.getItem("meteoEmotionnelleTPG_hasVoted") === "true"){
+    document.getElementById("message").innerHTML = "<p class='closed'>Tu as déjà voté, merci pour ta participation.</p>";
+    return;
+  }
+
+  const snap = await get(votePath);
+  const data = snap.val();
+  if(!data || !data.open){
+    document.getElementById("message").innerHTML = "<p class='closed'>Les votes ne sont pas ouverts actuellement.</p>";
+    return;
+  }
+
+  await runTransaction(ref(db, `meteoEmotionnelleTPG/votes/${value}`), current => (current || 0) + 1);
+  localStorage.setItem("meteoEmotionnelleTPG_hasVoted","true");
+
+  let html = `<div class="success">Merci d’avoir voté 🙏</div><p>Ta réponse a bien été prise en compte.</p>`;
+  if(value === 1 || value === 2){
+    html += `<div class="help"><strong>Message bienveillant :</strong><br>Si tu te sens mal aujourd’hui, pense à en parler à une personne de confiance : un collègue, une collègue ou un superviseur. Tu n’as pas besoin de garder ça pour toi.</div>`;
+  }
+  document.getElementById("voteBox").innerHTML = html;
+}
+
+window.openVotes = async function(){ await update(votePath,{open:true}); }
+window.closeVotes = async function(){ await update(votePath,{open:false}); }
+window.resetVotes = async function(){
+  if(confirm("Réinitialiser tous les votes ?")){
+    await set(votePath,{open:false,votes:{1:0,2:0,3:0,4:0,5:0,6:0}});
+  }
+}
+
+function listenAdmin(){
+  onValue(votePath, snap => {
+    const data = snap.val() || {open:false,votes:{}};
+    const votes = {1:0,2:0,3:0,4:0,5:0,6:0, ...(data.votes || {})};
+    const total = Object.values(votes).reduce((a,b)=>a+Number(b || 0),0);
+    const weighted = [1,2,3,4,5,6].reduce((sum,i)=>sum+(votes[i]||0)*i,0);
+    const average = total ? (weighted/total).toFixed(2) : "0.00";
+    const low = (votes[1]||0)+(votes[2]||0);
+
+    document.getElementById("status").innerHTML = data.open ? "Statut : votes ouverts ✅" : "Statut : votes fermés 🔒";
+    document.getElementById("kpis").innerHTML = `
+      <div class="kpi"><span>Total</span><strong>${total}</strong></div>
+      <div class="kpi"><span>Moyenne</span><strong>${average}/6</strong></div>
+      <div class="kpi"><span>Alertes 1-2</span><strong>${low}</strong></div>
+    `;
+
+    const labels = {
+      1:"⛈️ Très difficile",
+      2:"🌧️ Difficile",
+      3:"☁️ Mitigé",
+      4:"🌤️ Correct",
+      5:"☀️ Bien",
+      6:"🌈 Excellent"
+    };
+    let html = `<h3>Résultats détaillés</h3>`;
+    for(let i=1;i<=6;i++){
+      const percent = total ? Math.round(((votes[i]||0)/total)*100) : 0;
+      html += `
+        <div class="result-line">
+          <div class="result-top"><span>${labels[i]}</span><span>${votes[i]||0} vote(s) · ${percent}%</span></div>
+          <div class="bar-bg"><div class="bar" style="width:${percent}%"></div></div>
+        </div>`;
+    }
+    document.getElementById("results").innerHTML = html;
+  });
+}
+init();
+</script>
+</body>
+</html>
