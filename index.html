@@ -318,6 +318,15 @@ footer{margin-top:24px;color:#777;font-size:13px}
       </div>
     </div>
     <p id="status"></p>
+    <div class="admin-actions" style="margin:12px 0 18px;">
+      <label style="font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        Résultats archivés du jour :
+        <input id="historyDate" type="date" style="padding:11px 12px;border-radius:12px;border:1px solid #ddd;font-weight:800;">
+      </label>
+      <button class="ghost" onclick="loadHistoryDate()">Afficher cette date</button>
+      <button class="ghost" onclick="showToday()">Revenir au jour actuel</button>
+    </div>
+    <p class="small" style="text-align:left;margin-top:0;">Mode auto : à chaque changement de jour à Genève, la page archive le jour précédent et repart à zéro.</p>
     <div id="kpis" class="kpis"></div>
     <div id="results"></div>
   </div>
@@ -344,38 +353,80 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const votePath = ref(db, "meteoEmotionnelleTPG");
 const isAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+const emptyVotes = {1:0,2:0,3:0,4:0,5:0,6:0};
+let unsubscribeAdmin = null;
+
+function genevaDate(){
+  const parts = new Intl.DateTimeFormat("fr-CA", {
+    timeZone:"Europe/Zurich", year:"numeric", month:"2-digit", day:"2-digit"
+  }).formatToParts(new Date());
+  const y = parts.find(p=>p.type==="year").value;
+  const m = parts.find(p=>p.type==="month").value;
+  const d = parts.find(p=>p.type==="day").value;
+  return `${y}-${m}-${d}`;
+}
+
+async function ensureTodayReady(){
+  const today = genevaDate();
+  const snap = await get(votePath);
+
+  if(!snap.exists()){
+    await set(votePath,{open:false,currentDate:today,roundId:1,votes:emptyVotes,history:{}});
+    return;
+  }
+
+  const data = snap.val() || {};
+  const currentDate = data.currentDate || today;
+  const votes = {...emptyVotes, ...(data.votes || {})};
+  const roundId = data.roundId || 1;
+
+  if(currentDate !== today){
+    await update(votePath,{
+      [`history/${currentDate}`]: {
+        date: currentDate,
+        votes,
+        open: false,
+        closedAt: new Date().toISOString()
+      },
+      currentDate: today,
+      open: false,
+      roundId: roundId + 1,
+      votes: emptyVotes
+    });
+  } else {
+    await update(votePath,{currentDate, roundId, votes});
+  }
+}
 
 async function init(){
-  const snap = await get(votePath);
-  const initialVotes = {1:0,2:0,3:0,4:0,5:0,6:0};
-  if(!snap.exists()){
-    await set(votePath,{open:false,votes:initialVotes});
-  } else {
-    const data = snap.val() || {};
-    const votes = {...initialVotes, ...(data.votes || {})};
-    await update(votePath,{votes});
-  }
+  await ensureTodayReady();
   if(isAdmin){
     document.getElementById("adminPanel").style.display="block";
+    document.getElementById("historyDate").value = genevaDate();
     listenAdmin();
   }
 }
 
 window.vote = async function(value){
-  if(localStorage.getItem("meteoEmotionnelleTPG_hasVoted") === "true"){
-    document.getElementById("message").innerHTML = "<p class='closed'>Tu as déjà voté, merci pour ta participation.</p>";
+  await ensureTodayReady();
+  const snap = await get(votePath);
+  const data = snap.val();
+  const today = data.currentDate || genevaDate();
+  const roundId = data.roundId || 1;
+  const votedKey = `meteoEmotionnelleTPG_hasVoted_${today}_${roundId}`;
+
+  if(localStorage.getItem(votedKey) === "true"){
+    document.getElementById("message").innerHTML = "<p class='closed'>Tu as déjà voté pour cette session, merci pour ta participation.</p>";
     return;
   }
 
-  const snap = await get(votePath);
-  const data = snap.val();
   if(!data || !data.open){
     document.getElementById("message").innerHTML = "<p class='closed'>Les votes ne sont pas ouverts actuellement.</p>";
     return;
   }
 
   await runTransaction(ref(db, `meteoEmotionnelleTPG/votes/${value}`), current => (current || 0) + 1);
-  localStorage.setItem("meteoEmotionnelleTPG_hasVoted","true");
+  localStorage.setItem(votedKey,"true");
 
   let html = `<div class="success">Merci d’avoir voté 🙏</div><p>Ta réponse a bien été prise en compte.</p>`;
   if(value === 1 || value === 2){
@@ -384,50 +435,98 @@ window.vote = async function(value){
   document.getElementById("voteBox").innerHTML = html;
 }
 
-window.openVotes = async function(){ await update(votePath,{open:true}); }
-window.closeVotes = async function(){ await update(votePath,{open:false}); }
+window.openVotes = async function(){
+  await ensureTodayReady();
+  await update(votePath,{open:true});
+}
+
+window.closeVotes = async function(){
+  await ensureTodayReady();
+  await update(votePath,{open:false, closedAt:new Date().toISOString()});
+}
+
 window.resetVotes = async function(){
-  if(confirm("Réinitialiser tous les votes ?")){
-    await set(votePath,{open:false,votes:{1:0,2:0,3:0,4:0,5:0,6:0}});
+  if(confirm("Réinitialiser tous les votes du jour ? Cela permettra aussi aux personnes de revoter pour cette nouvelle session.")){
+    await ensureTodayReady();
+    const snap = await get(votePath);
+    const data = snap.val() || {};
+    await update(votePath,{
+      open:false,
+      votes:emptyVotes,
+      roundId:(data.roundId || 1) + 1,
+      resetAt:new Date().toISOString()
+    });
   }
 }
 
+window.loadHistoryDate = async function(){
+  const date = document.getElementById("historyDate").value;
+  if(!date) return;
+  const today = genevaDate();
+  if(date === today){
+    listenAdmin();
+    return;
+  }
+  if(unsubscribeAdmin) unsubscribeAdmin();
+  const snap = await get(ref(db, `meteoEmotionnelleTPG/history/${date}`));
+  const data = snap.val();
+  if(!data){
+    renderResults({open:false,currentDate:date,votes:emptyVotes}, true, "Aucun résultat archivé pour cette date.");
+    return;
+  }
+  renderResults({open:false,currentDate:date,votes:{...emptyVotes, ...(data.votes || {})}}, true);
+}
+
+window.showToday = function(){
+  document.getElementById("historyDate").value = genevaDate();
+  listenAdmin();
+}
+
 function listenAdmin(){
-  onValue(votePath, snap => {
-    const data = snap.val() || {open:false,votes:{}};
-    const votes = {1:0,2:0,3:0,4:0,5:0,6:0, ...(data.votes || {})};
-    const total = Object.values(votes).reduce((a,b)=>a+Number(b || 0),0);
-    const weighted = [1,2,3,4,5,6].reduce((sum,i)=>sum+(votes[i]||0)*i,0);
-    const average = total ? (weighted/total).toFixed(2) : "0.00";
-    const low = (votes[1]||0)+(votes[2]||0);
-
-    document.getElementById("status").innerHTML = data.open ? "Statut : votes ouverts ✅" : "Statut : votes fermés 🔒";
-    document.getElementById("kpis").innerHTML = `
-      <div class="kpi"><span>Total</span><strong>${total}</strong></div>
-      <div class="kpi"><span>Moyenne</span><strong>${average}/6</strong></div>
-      <div class="kpi"><span>Alertes 1-2</span><strong>${low}</strong></div>
-    `;
-
-    const labels = {
-      1:"⛈️ Très difficile",
-      2:"🌧️ Difficile",
-      3:"☁️ Mitigé",
-      4:"🌤️ Correct",
-      5:"☀️ Bien",
-      6:"🌈 Excellent"
-    };
-    let html = `<h3>Résultats détaillés</h3>`;
-    for(let i=1;i<=6;i++){
-      const percent = total ? Math.round(((votes[i]||0)/total)*100) : 0;
-      html += `
-        <div class="result-line">
-          <div class="result-top"><span>${labels[i]}</span><span>${votes[i]||0} vote(s) · ${percent}%</span></div>
-          <div class="bar-bg"><div class="bar" style="width:${percent}%"></div></div>
-        </div>`;
-    }
-    document.getElementById("results").innerHTML = html;
+  if(unsubscribeAdmin) unsubscribeAdmin();
+  unsubscribeAdmin = onValue(votePath, snap => {
+    renderResults(snap.val() || {open:false,votes:emptyVotes,currentDate:genevaDate()}, false);
   });
 }
+
+function renderResults(data, archived=false, emptyMessage=""){
+  const votes = {...emptyVotes, ...(data.votes || {})};
+  const total = Object.values(votes).reduce((a,b)=>a+Number(b || 0),0);
+  const weighted = [1,2,3,4,5,6].reduce((sum,i)=>sum+(votes[i]||0)*i,0);
+  const average = total ? (weighted/total).toFixed(2) : "0.00";
+  const low = (votes[1]||0)+(votes[2]||0);
+
+  document.getElementById("status").innerHTML = archived
+    ? `Consultation archive : ${data.currentDate || "date choisie"}`
+    : (data.open ? `Statut : votes ouverts ✅ · Jour ${data.currentDate || genevaDate()} · Session ${data.roundId || 1}` : `Statut : votes fermés 🔒 · Jour ${data.currentDate || genevaDate()} · Session ${data.roundId || 1}`);
+
+  document.getElementById("kpis").innerHTML = `
+    <div class="kpi"><span>Total</span><strong>${total}</strong></div>
+    <div class="kpi"><span>Moyenne</span><strong>${average}/6</strong></div>
+    <div class="kpi"><span>Alertes 1-2</span><strong>${low}</strong></div>
+  `;
+
+  const labels = {
+    1:"⛈️ Très difficile",
+    2:"🌧️ Difficile",
+    3:"☁️ Mitigé",
+    4:"🌤️ Correct",
+    5:"☀️ Bien",
+    6:"🌈 Excellent"
+  };
+  let html = `<h3>${archived ? "Résultats archivés" : "Résultats détaillés"}</h3>`;
+  if(emptyMessage) html += `<p class="closed">${emptyMessage}</p>`;
+  for(let i=1;i<=6;i++){
+    const percent = total ? Math.round(((votes[i]||0)/total)*100) : 0;
+    html += `
+      <div class="result-line">
+        <div class="result-top"><span>${labels[i]}</span><span>${votes[i]||0} vote(s) · ${percent}%</span></div>
+        <div class="bar-bg"><div class="bar" style="width:${percent}%"></div></div>
+      </div>`;
+  }
+  document.getElementById("results").innerHTML = html;
+}
+
 init();
 </script>
 </body>
