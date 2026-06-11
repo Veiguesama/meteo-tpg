@@ -46,8 +46,7 @@ body:before{
   position:relative;
   padding:34px 22px 58px;
   color:white;
-  background:
-    linear-gradient(135deg, #ff8a00 0%, var(--tpg-red) 45%, #ff3d00 100%);
+  background:linear-gradient(135deg, #ff8a00 0%, var(--tpg-red) 45%, #ff3d00 100%);
   overflow:hidden;
 }
 .hero:before{
@@ -236,7 +235,7 @@ body:before{
   flex-wrap:wrap;
 }
 .admin h2{margin:0;font-size:28px;letter-spacing:-.8px}
-.admin-actions{display:flex;gap:8px;flex-wrap:wrap}
+.admin-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .admin button{
   background:var(--tpg-red);
   color:white;
@@ -249,6 +248,30 @@ body:before{
 }
 .admin button.secondary{background:#222}
 .admin button.ghost{background:#777}
+.toggle-box{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:white;
+  padding:11px 14px;
+  border-radius:14px;
+  font-weight:800;
+  box-shadow:0 8px 20px rgba(0,0,0,.08);
+}
+.toggle-box input{width:20px;height:20px}
+.history-box{
+  margin:18px 0;
+  background:white;
+  border-radius:20px;
+  padding:18px;
+  box-shadow:0 8px 25px rgba(0,0,0,.08);
+}
+.history-box input{
+  padding:11px 12px;
+  border-radius:12px;
+  border:1px solid #ddd;
+  font-weight:700;
+}
 .kpis{
   display:grid;
   grid-template-columns:repeat(3,1fr);
@@ -293,7 +316,7 @@ footer{margin-top:24px;color:#777;font-size:13px}
   <div class="card" id="voteBox">
     <div class="badge">Projet collectif · Leadership émotionnel</div>
     <h2>Comment te sens-tu aujourd’hui ?</h2>
-    <p class="subtitle">Choisis la météo qui correspond le mieux à ton état du moment. Une seule réponse par appareil.</p>
+    <p class="subtitle">Choisis la météo qui correspond le mieux à ton état du moment. Une seule réponse par appareil et par session.</p>
 
     <div class="icons">
       <button class="mood" onclick="vote(1)"><span class="emoji">⛈️</span><span class="note">1</span><span class="label">Très difficile</span></button>
@@ -314,24 +337,29 @@ footer{margin-top:24px;color:#777;font-size:13px}
       <div class="admin-actions">
         <button onclick="openVotes()">Ouvrir les votes</button>
         <button class="secondary" onclick="closeVotes()">Fermer les votes</button>
-        <button class="ghost" onclick="resetVotes()">Réinitialiser</button>
+        <button class="ghost" onclick="manualResetVotes()">Réinitialiser</button>
+
+        <label class="toggle-box">
+          <span>Auto reset minuit Genève</span>
+          <input type="checkbox" id="autoResetToggle" onchange="toggleAutoReset()">
+        </label>
       </div>
     </div>
+
     <p id="status"></p>
-    <div class="admin-actions" style="margin:12px 0 18px;">
-      <label style="font-weight:800;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        Résultats archivés du jour :
-        <input id="historyDate" type="date" style="padding:11px 12px;border-radius:12px;border:1px solid #ddd;font-weight:800;">
-      </label>
-      <button class="ghost" onclick="loadHistoryDate()">Afficher cette date</button>
-      <button class="ghost" onclick="showToday()">Revenir au jour actuel</button>
+
+    <div class="history-box">
+      <strong>Historique par date</strong><br><br>
+      <input type="date" id="historyDate" onchange="loadHistoryDate()">
+      <button onclick="loadToday()">Voir aujourd’hui</button>
+      <div id="historyInfo" style="margin-top:12px;color:#666;font-weight:700;"></div>
     </div>
-    <p class="small" style="text-align:left;margin-top:0;">Mode auto : à chaque changement de jour à Genève, la page archive le jour précédent et repart à zéro.</p>
+
     <div id="kpis" class="kpis"></div>
     <div id="results"></div>
   </div>
 
-  <footer>tpg · Météo émotionnelle · Prototype Firebase</footer>
+  <footer>tpg · Météo émotionnelle · Firebase</footer>
 </div>
 
 <script type="module">
@@ -351,154 +379,232 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const votePath = ref(db, "meteoEmotionnelleTPG");
-const isAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
-const emptyVotes = {1:0,2:0,3:0,4:0,5:0,6:0};
-let unsubscribeAdmin = null;
 
-function genevaDate(){
-  const parts = new Intl.DateTimeFormat("fr-CA", {
-    timeZone:"Europe/Zurich", year:"numeric", month:"2-digit", day:"2-digit"
-  }).formatToParts(new Date());
-  const y = parts.find(p=>p.type==="year").value;
-  const m = parts.find(p=>p.type==="month").value;
-  const d = parts.find(p=>p.type==="day").value;
-  return `${y}-${m}-${d}`;
+const rootPath = ref(db, "meteoEmotionnelleTPG");
+const currentPath = ref(db, "meteoEmotionnelleTPG/current");
+const historyRootPath = ref(db, "meteoEmotionnelleTPG/history");
+
+const isAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+
+const emptyVotes = {1:0,2:0,3:0,4:0,5:0,6:0};
+
+function genevaToday(){
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
 }
 
-async function ensureTodayReady(){
-  const today = genevaDate();
-  const snap = await get(votePath);
+function currentVoteKey(sessionId){
+  return `meteoEmotionnelleTPG_voted_${sessionId}`;
+}
 
-  if(!snap.exists()){
-    await set(votePath,{open:false,currentDate:today,roundId:1,votes:emptyVotes,history:{}});
-    return;
-  }
+async function archiveCurrent(data){
+  if(!data || !data.current) return;
 
-  const data = snap.val() || {};
-  const currentDate = data.currentDate || today;
-  const votes = {...emptyVotes, ...(data.votes || {})};
-  const roundId = data.roundId || 1;
+  const current = data.current;
+  const date = current.date || genevaToday();
 
-  if(currentDate !== today){
-    await update(votePath,{
-      [`history/${currentDate}`]: {
-        date: currentDate,
-        votes,
+  await set(ref(db, `meteoEmotionnelleTPG/history/${date}`), {
+    date,
+    open: current.open || false,
+    votes: {...emptyVotes, ...(current.votes || {})},
+    archivedAt: new Date().toISOString()
+  });
+}
+
+async function checkDailyReset(){
+  const snap = await get(rootPath);
+  const data = snap.val();
+
+  if(!data || !data.current) return;
+
+  const today = genevaToday();
+  const currentDate = data.current.date || today;
+  const autoReset = data.settings?.autoReset === true;
+
+  if(autoReset && currentDate !== today){
+    await archiveCurrent(data);
+
+    const newSessionId = Date.now().toString();
+
+    await update(rootPath, {
+      current: {
+        date: today,
         open: false,
-        closedAt: new Date().toISOString()
-      },
-      currentDate: today,
-      open: false,
-      roundId: roundId + 1,
-      votes: emptyVotes
+        sessionId: newSessionId,
+        votes: emptyVotes
+      }
     });
-  } else {
-    await update(votePath,{currentDate, roundId, votes});
   }
 }
 
 async function init(){
-  await ensureTodayReady();
+  const snap = await get(rootPath);
+  const today = genevaToday();
+
+  if(!snap.exists()){
+    await set(rootPath, {
+      settings: {
+        autoReset: true
+      },
+      current: {
+        date: today,
+        open: false,
+        sessionId: Date.now().toString(),
+        votes: emptyVotes
+      },
+      history: {}
+    });
+  } else {
+    const data = snap.val() || {};
+    const current = data.current || {};
+    await update(rootPath, {
+      settings: {
+        autoReset: data.settings?.autoReset !== false
+      },
+      current: {
+        date: current.date || today,
+        open: current.open || false,
+        sessionId: current.sessionId || Date.now().toString(),
+        votes: {...emptyVotes, ...(current.votes || {})}
+      }
+    });
+  }
+
+  await checkDailyReset();
+
   if(isAdmin){
     document.getElementById("adminPanel").style.display="block";
-    document.getElementById("historyDate").value = genevaDate();
+    document.getElementById("historyDate").value = genevaToday();
     listenAdmin();
   }
 }
 
 window.vote = async function(value){
-  await ensureTodayReady();
-  const snap = await get(votePath);
-  const data = snap.val();
-  const today = data.currentDate || genevaDate();
-  const roundId = data.roundId || 1;
-  const votedKey = `meteoEmotionnelleTPG_hasVoted_${today}_${roundId}`;
+  await checkDailyReset();
 
-  if(localStorage.getItem(votedKey) === "true"){
-    document.getElementById("message").innerHTML = "<p class='closed'>Tu as déjà voté pour cette session, merci pour ta participation.</p>";
-    return;
-  }
+  const snap = await get(currentPath);
+  const current = snap.val();
 
-  if(!data || !data.open){
+  if(!current || !current.open){
     document.getElementById("message").innerHTML = "<p class='closed'>Les votes ne sont pas ouverts actuellement.</p>";
     return;
   }
 
-  await runTransaction(ref(db, `meteoEmotionnelleTPG/votes/${value}`), current => (current || 0) + 1);
-  localStorage.setItem(votedKey,"true");
+  const sessionId = current.sessionId;
+  const key = currentVoteKey(sessionId);
+
+  if(localStorage.getItem(key) === "true"){
+    document.getElementById("message").innerHTML = "<p class='closed'>Tu as déjà voté pour cette session, merci pour ta participation.</p>";
+    return;
+  }
+
+  await runTransaction(ref(db, `meteoEmotionnelleTPG/current/votes/${value}`), currentValue => (currentValue || 0) + 1);
+
+  localStorage.setItem(key, "true");
 
   let html = `<div class="success">Merci d’avoir voté 🙏</div><p>Ta réponse a bien été prise en compte.</p>`;
+
   if(value === 1 || value === 2){
     html += `<div class="help"><strong>Message bienveillant :</strong><br>Si tu te sens mal aujourd’hui, pense à en parler à une personne de confiance : un collègue, une collègue ou un superviseur. Tu n’as pas besoin de garder ça pour toi.</div>`;
   }
+
   document.getElementById("voteBox").innerHTML = html;
 }
 
 window.openVotes = async function(){
-  await ensureTodayReady();
-  await update(votePath,{open:true});
+  await checkDailyReset();
+  await update(currentPath, { open:true });
 }
 
 window.closeVotes = async function(){
-  await ensureTodayReady();
-  await update(votePath,{open:false, closedAt:new Date().toISOString()});
+  await update(currentPath, { open:false });
+  const snap = await get(rootPath);
+  await archiveCurrent(snap.val());
 }
 
-window.resetVotes = async function(){
-  if(confirm("Réinitialiser tous les votes du jour ? Cela permettra aussi aux personnes de revoter pour cette nouvelle session.")){
-    await ensureTodayReady();
-    const snap = await get(votePath);
-    const data = snap.val() || {};
-    await update(votePath,{
-      open:false,
-      votes:emptyVotes,
-      roundId:(data.roundId || 1) + 1,
-      resetAt:new Date().toISOString()
+window.manualResetVotes = async function(){
+  if(confirm("Réinitialiser les votes ? Cela créera une nouvelle session et les appareils pourront revoter.")){
+    const snap = await get(rootPath);
+    await archiveCurrent(snap.val());
+
+    await update(rootPath, {
+      current: {
+        date: genevaToday(),
+        open: false,
+        sessionId: Date.now().toString(),
+        votes: emptyVotes
+      }
     });
   }
 }
 
-window.loadHistoryDate = async function(){
-  const date = document.getElementById("historyDate").value;
-  if(!date) return;
-  const today = genevaDate();
-  if(date === today){
-    listenAdmin();
-    return;
-  }
-  if(unsubscribeAdmin) unsubscribeAdmin();
-  const snap = await get(ref(db, `meteoEmotionnelleTPG/history/${date}`));
-  const data = snap.val();
-  if(!data){
-    renderResults({open:false,currentDate:date,votes:emptyVotes}, true, "Aucun résultat archivé pour cette date.");
-    return;
-  }
-  renderResults({open:false,currentDate:date,votes:{...emptyVotes, ...(data.votes || {})}}, true);
-}
-
-window.showToday = function(){
-  document.getElementById("historyDate").value = genevaDate();
-  listenAdmin();
-}
-
-function listenAdmin(){
-  if(unsubscribeAdmin) unsubscribeAdmin();
-  unsubscribeAdmin = onValue(votePath, snap => {
-    renderResults(snap.val() || {open:false,votes:emptyVotes,currentDate:genevaDate()}, false);
+window.toggleAutoReset = async function(){
+  const enabled = document.getElementById("autoResetToggle").checked;
+  await update(ref(db, "meteoEmotionnelleTPG/settings"), {
+    autoReset: enabled
   });
 }
 
-function renderResults(data, archived=false, emptyMessage=""){
+window.loadToday = function(){
+  document.getElementById("historyDate").value = genevaToday();
+  renderCurrentMode();
+}
+
+window.loadHistoryDate = async function(){
+  const date = document.getElementById("historyDate").value;
+  const today = genevaToday();
+
+  if(date === today){
+    renderCurrentMode();
+    return;
+  }
+
+  const snap = await get(ref(db, `meteoEmotionnelleTPG/history/${date}`));
+  const history = snap.val();
+
+  if(!history){
+    document.getElementById("historyInfo").innerHTML = `Aucun résultat enregistré pour le ${date}.`;
+    renderResults({votes: emptyVotes, open:false, date}, true);
+    return;
+  }
+
+  document.getElementById("historyInfo").innerHTML = `Résultats archivés du ${date}.`;
+  renderResults(history, true);
+}
+
+function renderCurrentMode(){
+  document.getElementById("historyInfo").innerHTML = "Affichage des résultats du jour.";
+  get(currentPath).then(snap => renderResults(snap.val(), false));
+}
+
+function listenAdmin(){
+  onValue(rootPath, snap => {
+    const data = snap.val() || {};
+    const current = data.current || {};
+    const settings = data.settings || {};
+
+    document.getElementById("autoResetToggle").checked = settings.autoReset === true;
+
+    const selectedDate = document.getElementById("historyDate").value;
+    if(!selectedDate || selectedDate === genevaToday()){
+      document.getElementById("historyInfo").innerHTML = "Affichage des résultats du jour.";
+      renderResults(current, false);
+    }
+  });
+}
+
+function renderResults(data, isHistory){
+  data = data || {};
   const votes = {...emptyVotes, ...(data.votes || {})};
   const total = Object.values(votes).reduce((a,b)=>a+Number(b || 0),0);
   const weighted = [1,2,3,4,5,6].reduce((sum,i)=>sum+(votes[i]||0)*i,0);
   const average = total ? (weighted/total).toFixed(2) : "0.00";
   const low = (votes[1]||0)+(votes[2]||0);
 
-  document.getElementById("status").innerHTML = archived
-    ? `Consultation archive : ${data.currentDate || "date choisie"}`
-    : (data.open ? `Statut : votes ouverts ✅ · Jour ${data.currentDate || genevaDate()} · Session ${data.roundId || 1}` : `Statut : votes fermés 🔒 · Jour ${data.currentDate || genevaDate()} · Session ${data.roundId || 1}`);
+  if(isHistory){
+    document.getElementById("status").innerHTML = `Mode historique · ${data.date || ""}`;
+  } else {
+    document.getElementById("status").innerHTML = data.open ? "Statut : votes ouverts ✅" : "Statut : votes fermés 🔒";
+  }
 
   document.getElementById("kpis").innerHTML = `
     <div class="kpi"><span>Total</span><strong>${total}</strong></div>
@@ -514,16 +620,21 @@ function renderResults(data, archived=false, emptyMessage=""){
     5:"☀️ Bien",
     6:"🌈 Excellent"
   };
-  let html = `<h3>${archived ? "Résultats archivés" : "Résultats détaillés"}</h3>`;
-  if(emptyMessage) html += `<p class="closed">${emptyMessage}</p>`;
+
+  let html = `<h3>Résultats détaillés</h3>`;
+
   for(let i=1;i<=6;i++){
     const percent = total ? Math.round(((votes[i]||0)/total)*100) : 0;
     html += `
       <div class="result-line">
-        <div class="result-top"><span>${labels[i]}</span><span>${votes[i]||0} vote(s) · ${percent}%</span></div>
+        <div class="result-top">
+          <span>${labels[i]}</span>
+          <span>${votes[i]||0} vote(s) · ${percent}%</span>
+        </div>
         <div class="bar-bg"><div class="bar" style="width:${percent}%"></div></div>
       </div>`;
   }
+
   document.getElementById("results").innerHTML = html;
 }
 
