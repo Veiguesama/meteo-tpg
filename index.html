@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Météo émotionnelle TPG</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #f5f5f5, #ffffff);
+      color: #333;
+      text-align: center;
+    }
+
+    header {
+      background: #e30613;
+      color: white;
+      padding: 25px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+    }
+
+    .icons {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin: 30px 0;
+      flex-wrap: wrap;
+    }
+
+    .mood {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      border: none;
+      font-size: 32px;
+      cursor: pointer;
+      transition: 0.2s;
+      background: #f1f1f1;
+    }
+
+    .mood:hover {
+      transform: scale(1.08);
+      background: #ffe5e7;
+    }
+
+    .mood span {
+      display: block;
+      font-size: 16px;
+      margin-top: 5px;
+      font-weight: bold;
+    }
+
+    .message {
+      margin-top: 25px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .help {
+      margin-top: 15px;
+      background: #fff3cd;
+      padding: 18px;
+      border-radius: 12px;
+      color: #7a5a00;
+      font-size: 17px;
+      font-weight: normal;
+    }
+
+    .admin {
+      margin-top: 30px;
+      background: #f8f8f8;
+      border-radius: 16px;
+      padding: 25px;
+    }
+
+    button.admin-btn {
+      background: #e30613;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 8px;
+      font-size: 15px;
+    }
+
+    .results {
+      text-align: left;
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    .bar {
+      height: 22px;
+      background: #e30613;
+      border-radius: 10px;
+      margin: 6px 0 16px 0;
+    }
+
+    .closed {
+      color: #e30613;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Météo émotionnelle TPG</h1>
+  <p>Comment te sens-tu aujourd’hui ?</p>
+</header>
+
+<div class="container">
+  <div class="card" id="voteBox">
+    <h2>Choisis ton état du moment</h2>
+    <p>Ton vote est anonyme. Tu peux voter une seule fois.</p>
+
+    <div class="icons">
+      <button class="mood" onclick="vote(1)">😞<span>1</span></button>
+      <button class="mood" onclick="vote(2)">😕<span>2</span></button>
+      <button class="mood" onclick="vote(3)">😐<span>3</span></button>
+      <button class="mood" onclick="vote(4)">🙂<span>4</span></button>
+      <button class="mood" onclick="vote(5)">😊<span>5</span></button>
+      <button class="mood" onclick="vote(6)">😄<span>6</span></button>
+    </div>
+
+    <div id="message" class="message"></div>
+  </div>
+
+  <div class="admin" id="adminPanel" style="display:none;">
+    <h2>Interface admin</h2>
+
+    <button class="admin-btn" onclick="openVote()">Ouvrir les votes</button>
+    <button class="admin-btn" onclick="closeVote()">Fermer les votes</button>
+    <button class="admin-btn" onclick="resetVotes()">Réinitialiser</button>
+
+    <p id="voteStatus"></p>
+
+    <div id="results" class="results"></div>
+  </div>
+</div>
+
+<script>
+  const isAdmin = new URLSearchParams(window.location.search).get("admin") === "1";
+
+  if (!localStorage.getItem("votes")) {
+    localStorage.setItem("votes", JSON.stringify({1:0,2:0,3:0,4:0,5:0,6:0}));
+  }
+
+  if (!localStorage.getItem("voteOpen")) {
+    localStorage.setItem("voteOpen", "false");
+  }
+
+  if (isAdmin) {
+    document.getElementById("adminPanel").style.display = "block";
+    updateAdmin();
+  }
+
+  function vote(value) {
+    const voteOpen = localStorage.getItem("voteOpen") === "true";
+    const alreadyVoted = localStorage.getItem("hasVoted") === "true";
+
+    if (!voteOpen) {
+      document.getElementById("message").innerHTML =
+        "<span class='closed'>Les votes ne sont pas ouverts actuellement.</span>";
+      return;
+    }
+
+    if (alreadyVoted) {
+      document.getElementById("message").innerHTML =
+        "Tu as déjà voté, merci pour ta participation.";
+      return;
+    }
+
+    let votes = JSON.parse(localStorage.getItem("votes"));
+
+    if (!votes[value]) {
+      votes[value] = 0;
+    }
+
+    votes[value]++;
+    localStorage.setItem("votes", JSON.stringify(votes));
+    localStorage.setItem("hasVoted", "true");
+
+    let msg = "Merci d’avoir voté 🙏";
+
+    if (value === 1 || value === 2) {
+      msg += `
+        <div class="help">
+          Si tu te sens mal, pense à en parler à quelqu’un de confiance :
+          un collègue, une collègue ou un superviseur. Tu n’as pas besoin de garder ça pour toi.
+        </div>
+      `;
+    }
+
+    document.getElementById("message").innerHTML = msg;
+  }
+
+  function openVote() {
+    localStorage.setItem("voteOpen", "true");
+    updateAdmin();
+  }
+
+  function closeVote() {
+    localStorage.setItem("voteOpen", "false");
+    updateAdmin();
+  }
+
+  function resetVotes() {
+    localStorage.setItem("votes", JSON.stringify({1:0,2:0,3:0,4:0,5:0,6:0}));
+    localStorage.removeItem("hasVoted");
+    updateAdmin();
+  }
+
+  function updateAdmin() {
+    const votes = JSON.parse(localStorage.getItem("votes"));
+    const voteOpen = localStorage.getItem("voteOpen") === "true";
+    const total = Object.values(votes).reduce((a,b) => a + b, 0);
+
+    document.getElementById("voteStatus").innerHTML =
+      voteOpen ? "Statut : votes ouverts ✅" : "Statut : votes fermés 🔒";
+
+    let html = `<h3>Résultats ${voteOpen ? "(visibles uniquement admin)" : "finaux"}</h3>`;
+    html += `<p>Total des votes : <strong>${total}</strong></p>`;
+
+    for (let i = 1; i <= 6; i++) {
+      const count = votes[i] || 0;
+      const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+      html += `
+        <div>
+          Note ${i} : ${count} vote(s) - ${percent}%
+          <div class="bar" style="width:${percent}%;"></div>
+        </div>
+      `;
+    }
+
+    document.getElementById("results").innerHTML = html;
+  }
+</script>
+
+</body>
+</html>
